@@ -1,0 +1,25 @@
+{
+  "name": "pulsehr-mobile",
+  "version": "1.0.0",
+  "description": "PulseHR mobile shell: renders the PulseHR web app (frontend/) inside Expo Go",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "start": "expo start --max-workers 2",
+    "android": "expo start --android --max-workers 2",
+    "ios": "expo start --ios"
+  },
+  "dependencies": {
+    "expo": "^57.0.25",
+    "expo-constants": "~57.0.19",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-webview": "13.16.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.4",
+    "typescript": "~6.0.3"
+  }
+}
