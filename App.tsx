@@ -1,29 +1,71 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { WebView, type WebViewNavigation } from 'react-native-webview';
 
-const WEB_PORT = 3000;
+// The web app (frontend/) runs on the same computer as Metro. Expo Go already knows that computer's
+// LAN address, so we reuse it and probe the usual dev ports until one answers with the PulseHR login
+// page (so a moved or restarted dev server is found automatically).
+// Override with EXPO_PUBLIC_WEB_URL (e.g. a deployed https URL) when needed.
+const CANDIDATE_PORTS = [3000, 3001, 3002, 3003, 3004, 3005];
 
-// The web app (frontend/) runs on the same machine as Metro. Expo Go already knows
-// that machine's LAN address, so we reuse it. Override with EXPO_PUBLIC_WEB_URL
-// (e.g. a deployed https URL) when needed.
-function resolveWebUrl(): string {
+async function findWebUrl(): Promise<string | null> {
   const override = process.env.EXPO_PUBLIC_WEB_URL;
   if (override) return override;
-  const host = Constants.expoConfig?.hostUri?.split(':')[0];
-  return `http://${host ?? 'localhost'}:${WEB_PORT}`;
-}
+  const host = Constants.expoConfig?.hostUri?.split(':')[0] ?? 'localhost';
 
-const WEB_URL = resolveWebUrl();
+  const results = await Promise.all(
+    CANDIDATE_PORTS.map(async (port) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      try {
+        const res = await fetch(`http://${host}:${port}/login`, { signal: controller.signal });
+        return res.ok ? port : null;
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
+    })
+  );
+  const port = results.find((p) => p !== null);
+  return port ? `http://${host}:${port}` : null;
+}
 
 export default function App() {
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [webUrl, setWebUrl] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0); // bumping this re-runs discovery and remounts the WebView
+
+  useEffect(() => {
+    let active = true;
+    setFailed(false);
+    setLoading(true);
+    findWebUrl().then((url) => {
+      if (!active) return;
+      if (url) setWebUrl(url);
+      else {
+        setFailed(true);
+        setLoading(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
+
+  // Always show the latest version: reload whenever the app comes back to the foreground.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') webViewRef.current?.reload();
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -41,11 +83,7 @@ export default function App() {
     setCanGoBack(nav.canGoBack);
   }, []);
 
-  const retry = useCallback(() => {
-    setFailed(false);
-    setLoading(true);
-    webViewRef.current?.reload();
-  }, []);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   return (
     <SafeAreaProvider>
@@ -57,15 +95,19 @@ export default function App() {
             <Text style={styles.body}>
               Make sure the web app is running (npm run dev:frontend) and this phone is on the same Wi-Fi as your computer.
             </Text>
-            <Text style={styles.url}>{WEB_URL}</Text>
+            <Text style={styles.url}>Looked for it on ports {CANDIDATE_PORTS[0]}–{CANDIDATE_PORTS[CANDIDATE_PORTS.length - 1]}</Text>
             <Pressable style={styles.button} onPress={retry}>
               <Text style={styles.buttonText}>Try again</Text>
             </Pressable>
           </View>
-        ) : (
+        ) : webUrl ? (
           <WebView
+            key={`${webUrl}-${attempt}`}
             ref={webViewRef}
-            source={{ uri: WEB_URL }}
+            source={{ uri: webUrl }}
+            cacheEnabled={false}
+            cacheMode="LOAD_NO_CACHE"
+            geolocationEnabled
             style={styles.webview}
             onLoadEnd={() => setLoading(false)}
             onError={() => {
@@ -80,7 +122,7 @@ export default function App() {
             allowsBackForwardNavigationGestures
             setSupportMultipleWindows={false}
           />
-        )}
+        ) : null}
         {loading && !failed && (
           <View style={styles.loader} pointerEvents="none">
             <ActivityIndicator size="large" color="#2563eb" />
