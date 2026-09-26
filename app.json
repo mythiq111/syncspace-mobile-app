@@ -14,10 +14,18 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
-      ]
+      ],
+      "package": "com.pulsehr.mobile",
+      "versionCode": 1
     },
     "plugins": [
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d49089f0-18ff-4a25-add5-ef73510c252c"
+      }
+    },
+    "owner": "kartikeya_dev"
   }
 }
